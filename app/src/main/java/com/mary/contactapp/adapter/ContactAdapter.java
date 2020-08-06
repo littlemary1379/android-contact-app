@@ -12,14 +12,20 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.mary.contactapp.MainActivity;
 import com.mary.contactapp.R;
 import com.mary.contactapp.db.model.Contact;
+import com.mary.contactapp.util.ImageUpload;
 
+import java.io.File;
 import java.util.List;
+
+import de.hdodenhof.circleimageview.CircleImageView;
 
 public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHolder> {
 
     private static final String TAG = "ContactsAdapter";
     private MainActivity mainActivity;
     private List<Contact> contacts;
+    private File tempFile;
+    private ImageUpload imageUpload=new ImageUpload();
 
     public void addItems(List<Contact> contacts){
         this.contacts = contacts;
@@ -38,19 +44,21 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
 
         TextView tvName;
         TextView tvEmail;
+        CircleImageView ivImage;
 
         public ViewHolder(@NonNull View itemView) {
             super(itemView);
             Log.d(TAG, "ViewHolder: ");
             tvName = itemView.findViewById(R.id.tv_name);
             tvEmail = itemView.findViewById(R.id.tv_email);
+            ivImage=itemView.findViewById(R.id.iv_profile);
         }
 
-        void setItem(String name, String email){
+        void setItem(String name, String email, String imageUrl){
             Log.d(TAG, "setItem: ");
             tvName.setText(name);
             tvEmail.setText(email);
-
+            imageUpload.setImage(imageUrl,ivImage);
         }
     }
 
@@ -65,7 +73,7 @@ public class ContactAdapter extends RecyclerView.Adapter<ContactAdapter.ViewHold
     public void onBindViewHolder(@NonNull ContactAdapter.ViewHolder holder, final int position) {
         // 컬렉션 증가 변화에만 반응함.
         final Contact contact = contacts.get(position);
-        holder.setItem(contact.getName(), contact.getEmail());
+        holder.setItem(contact.getName(), contact.getEmail(),contact.getProfileUrl());
 
         // 데이터 바인딩할 때 이벤트 달기
         holder.itemView.setOnClickListener(new View.OnClickListener() {

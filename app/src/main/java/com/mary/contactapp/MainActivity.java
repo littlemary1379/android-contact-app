@@ -1,6 +1,7 @@
 package com.mary.contactapp;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
@@ -8,9 +9,17 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.room.Room;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.MediaStore;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -18,11 +27,15 @@ import android.view.View;
 import android.widget.EditText;
 
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.gun0912.tedpermission.PermissionListener;
+import com.gun0912.tedpermission.TedPermission;
 import com.mary.contactapp.adapter.ContactAdapter;
 import com.mary.contactapp.db.ContactAppDatabase;
 import com.mary.contactapp.db.model.Contact;
 import com.mary.contactapp.service.ContactService;
 
+import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
 import de.hdodenhof.circleimageview.CircleImageView;
@@ -37,11 +50,17 @@ public class MainActivity extends AppCompatActivity {
     private RecyclerView.LayoutManager mLayoutManager;
     private ContactAdapter adapter;
     private FloatingActionButton fab;
-    private CircleImageView ivProfile;
 
     private ContactAppDatabase contactAppDatabase;
     private ContactService contactService;
     private List<Contact> contacts;
+
+    // 사진 업로드
+    private CircleImageView ivProfile;
+    private File tempFile;
+    private String imageRealPath;
+    private static final int PICK_FROM_ALBUM = 1;
+    private static final int PICK_FROM_CAMERA = 2;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,6 +69,7 @@ public class MainActivity extends AppCompatActivity {
 
         // DB관련
         contactAppDatabase = Room.databaseBuilder(getApplicationContext(), ContactAppDatabase.class, "ContactDB")
+                .fallbackToDestructiveMigration()
                 .allowMainThreadQueries()
                 .build();
         contactService = new ContactService(contactAppDatabase.contactRepository());
@@ -58,6 +78,7 @@ public class MainActivity extends AppCompatActivity {
         initObject();
         initDesign();
         initListener();
+        tedPermission();
     }
 
     private void initData(){
@@ -114,7 +135,7 @@ public class MainActivity extends AppCompatActivity {
         ivProfile.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                //goToAlbum();
+                goToAlbum();
             }
         });
 
@@ -124,15 +145,15 @@ public class MainActivity extends AppCompatActivity {
         dlg.setPositiveButton("등록", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
-                createContact(etName.getText().toString(), etEmail.getText().toString());
+                createContact(etName.getText().toString(), etEmail.getText().toString(),imageRealPath);
             }
         });
         dlg.setNegativeButton("닫기", null);
         dlg.show();
     }
 
-    private void createContact(String name, String email) {
-        long contactId = contactService.연락처등록(new Contact(name, email));
+    private void createContact(String name, String email,String imageUri) {
+        long contactId = contactService.연락처등록(new Contact(name, email, imageUri));
         // if 해서 contactId가 0이 아닐 때 동작하게 해야 함
         Contact contact = contactService.연락처상세보기((long)contactId);
         adapter.addItem(contact);
@@ -144,15 +165,18 @@ public class MainActivity extends AppCompatActivity {
         View dialogView = LayoutInflater.from(getApplicationContext()).inflate(R.layout.layout_add_contact, null);
         final EditText etName = dialogView.findViewById(R.id.name);
         final EditText etEmail = dialogView.findViewById(R.id.email);
-
+        ivProfile = dialogView.findViewById(R.id.iv_profile);
         etName.setText(contact.getName());
         etEmail.setText(contact.getEmail());
+        tempFile=new File(contact.getProfileUrl());
+        setImage();
+
+        
         // 갤러리 사진 수정하기
-        ivProfile = dialogView.findViewById(R.id.iv_profile);
         ivProfile.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                //goToAlbum();
+                goToAlbum();
             }
         });
 
@@ -162,7 +186,14 @@ public class MainActivity extends AppCompatActivity {
         dlg.setPositiveButton("수정", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
-
+                Contact updateContact=new Contact(
+                        contact.getId(),
+                        etName.getText().toString(),
+                        etEmail.getText().toString(),
+                        imageRealPath
+                );
+                contactService.연락처수정(updateContact);
+                notifyListener();
             }
         });
         dlg.setNegativeButton("삭제", new DialogInterface.OnClickListener() {
@@ -174,6 +205,72 @@ public class MainActivity extends AppCompatActivity {
         });
         dlg.show();
 
+    }
+
+    // 권한 관련
+    private void tedPermission() {
+        PermissionListener permissionListener = new PermissionListener() {
+            @Override
+            public void onPermissionGranted() {
+                // 권한 요청 성공
+            }
+
+            @Override
+            public void onPermissionDenied(ArrayList<String> deniedPermissions) {
+                // 권한 요청 실패
+            }
+        };
+
+        TedPermission.with(this)
+                .setPermissionListener(permissionListener)
+                .setRationaleMessage(getResources().getString(R.string.permission_2))
+                .setDeniedMessage(getResources().getString(R.string.permission_1))
+                .setPermissions(Manifest.permission.WRITE_EXTERNAL_STORAGE, Manifest.permission.CAMERA)
+                .check();
+
+    }
+    // 앨범으로 이동
+    private void goToAlbum() {
+        Intent intent = new Intent(Intent.ACTION_PICK);
+        intent.setType(MediaStore.Images.Media.CONTENT_TYPE);
+        startActivityForResult(intent, PICK_FROM_ALBUM);
+    }
+
+    // 이미지 채우기
+    public void setImage() {
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        Bitmap originalBm = BitmapFactory.decodeFile(tempFile.getAbsolutePath(), options);
+        ivProfile.setImageBitmap(originalBm);
+    }
+
+    // URI로 이미지 실제 경로 가져오기
+    private String getRealPathFromURI(Uri contentURI) {
+        String result;
+        Cursor cursor = getContentResolver().query(contentURI, null, null, null, null);
+        if (cursor == null) { // Source is Dropbox or other similar local file path
+            result = contentURI.getPath();
+        } else {
+            cursor.moveToFirst();
+            int idx = cursor.getColumnIndex(MediaStore.Images.ImageColumns.DATA);
+            result = cursor.getString(idx);
+            cursor.close();
+        }
+        return result;
+    }
+
+    // 이미지 선택 후 이미지 채우기
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        Log.d(TAG, "onActivityResult: 여기로 오나?");
+        if (requestCode == PICK_FROM_ALBUM) {
+            Uri photoUri = data.getData();
+            Log.d(TAG, "onActivityResult: "+photoUri);
+            imageRealPath = getRealPathFromURI(photoUri);
+            Log.d(TAG, "onActivityResult: "+imageRealPath);
+            tempFile = new File(imageRealPath);
+            setImage();
+        }
     }
 
     public void notifyListener() {

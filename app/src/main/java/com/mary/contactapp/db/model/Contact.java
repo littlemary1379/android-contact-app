@@ -18,12 +18,26 @@ public class Contact {
     @ColumnInfo(name="contact_email")
     private String email;
 
+    @ColumnInfo(name="contact_profileUrl")
+    private String profileUrl;
+
     @Ignore
     public Contact() { }
 
-    public Contact(String name, String email) {
+    //DB에 넣을 때 필요 없는 생성자는 Ignore
+    //Room은 생성자로 하기 때문 <<
+    public Contact(String name, String email,String profileUrl) {
         this.name = name;
         this.email = email;
+        this.profileUrl=profileUrl;
+    }
+
+    @Ignore
+    public Contact(long id, String name, String email,String profileUrl) {
+        this.id=id;
+        this.name = name;
+        this.email = email;
+        this.profileUrl=profileUrl;
     }
 
     public long getId() {
@@ -49,6 +63,15 @@ public class Contact {
     public void setEmail(String email) {
         this.email = email;
     }
+
+    public String getProfileUrl() {
+        return profileUrl;
+    }
+
+    public void setProfileUrl(String profileUrl) {
+        this.profileUrl = profileUrl;
+    }
+
 }
 
 /**
